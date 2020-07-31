@@ -26,12 +26,28 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Spring-like template for executing with PostgreSQL advisory locks.
  */
 public class PostgreSQLAdvisoryLockTemplate {
     private static final Log LOG = LogFactory.getLog(PostgreSQLAdvisoryLockTemplate.class);
+
+    /* begin Hot Patch */
+    private static final AtomicLong NUMBER_OF_RETRIES = new AtomicLong(60000L / 100); //MJB: 100 ms delays in the code below, and we want to retry for a minute
+    public static void setNumberOfRetries(long numberOfRetries) {
+        if (numberOfRetries < 0) {
+            LOG.warn("Setting INFINITE number of advisory lock retries - this may cause a deadlock");
+        } else {
+            LOG.info("Setting number of advisory lock retries to " +  numberOfRetries);
+        }
+        NUMBER_OF_RETRIES.set(numberOfRetries);
+    }
+    public static long getNumberOfRetries() {
+        return NUMBER_OF_RETRIES.get();
+    }
+    /* end hot patch */
 
     private static final long LOCK_MAGIC_NUM =
             (0x46L << 40) // F
@@ -90,6 +106,9 @@ public class PostgreSQLAdvisoryLockTemplate {
 
     private void lock() throws SQLException {
         int retries = 0;
+        // Begin Hot Patch
+        final long maximumRetries = getNumberOfRetries();
+        // End Hot Patch
         while (!tryLock()) {
             try {
                 Thread.sleep(100L);
@@ -97,7 +116,8 @@ public class PostgreSQLAdvisoryLockTemplate {
                 throw new FlywayException("Interrupted while attempting to acquire PostgreSQL advisory lock", e);
             }
 
-            if (++retries >= 50) {
+            // Hot patch - change from 50 hard coded to adjustable value
+            if ((maximumRetries > 0) && (++retries >= maximumRetries)) {
                 throw new FlywayException("Number of retries exceeded while attempting to acquire PostgreSQL advisory lock");
             }
         }
