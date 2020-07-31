@@ -117,8 +117,8 @@ public class PostgreSQLAdvisoryLockTemplate {
             }
 
             // Hot patch - change from 50 hard coded to adjustable value
-            if ((maximumRetries > 0) && (++retries >= maximumRetries)) {
-                throw new FlywayException("Number of retries exceeded while attempting to acquire PostgreSQL advisory lock");
+            if ((maximumRetries >= 0) && (++retries >= maximumRetries)) {
+                throw new FlywayException("Number of retries exceeded while attempting to acquire PostgreSQL advisory lock (maxRetries=" + maximumRetries +")");
             }
         }
     }
